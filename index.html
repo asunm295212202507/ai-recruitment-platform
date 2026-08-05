@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TalentAI // Premium AI Recruitment Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-logo">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                        <polyline points="2 17 12 22 22 17" />
+                        <polyline points="2 12 12 17 22 12" />
+                    </svg>
+                </div>
+                <span class="brand-name">Talent<span class="gradient-text">AI</span></span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#dashboard" class="nav-item active" data-view="dashboard">
+                    <svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="9" />
+                        <rect x="14" y="3" width="7" height="5" />
+                        <rect x="14" y="12" width="7" height="9" />
+                        <rect x="3" y="16" width="7" height="5" />
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#jobs" class="nav-item" data-view="jobs">
+                    <svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                    </svg>
+                    <span>Job Board</span>
+                </a>
+                <a href="#screener" class="nav-item" data-view="screener">
+                    <svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                    <span>Resume Screener</span>
+                </a>
+                <a href="#interview" class="nav-item" data-view="interview">
+                    <svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>Interview Simulator</span>
+                </a>
+                <a href="#analytics" class="nav-item" data-view="analytics">
+                    <svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10" />
+                        <line x1="12" y1="20" x2="12" y2="4" />
+                        <line x1="6" y1="20" x2="6" y2="14" />
+                    </svg>
+                    <span>Analytics</span>
+                </a>
+                <a href="#audit" class="nav-item" data-view="audit">
+                    <svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    <span>Audit & Governance</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="ai-status-card">
+                    <div class="status-indicator">
+                        <span class="pulse-dot"></span>
+                        <span class="status-text">AI Engine: Online</span>
+                    </div>
+                    <div class="model-badge">Model: v3.5.2-prod (NYC Law 144)</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="app-workspace">
+            <header class="app-header">
+                <div class="header-search">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input type="text" placeholder="Search candidates, audit logs, or AI insights..." id="global-search">
+                </div>
+                
+                <div class="header-actions">
+                    <!-- Enterprise Role Switcher -->
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:600;">Active Role:</span>
+                        <select id="role-switcher" class="select-filter" style="padding: 6px 12px; font-size: 0.775rem;">
+                            <option value="recruiter">Lead Recruiter</option>
+                            <option value="hiring_manager">Hiring Manager</option>
+                            <option value="auditor">Compliance Reviewer</option>
+                            <option value="org_admin">Organization Admin</option>
+                        </select>
+                    </div>
+
+                    <button class="icon-btn btn-notifications" title="System Notifications">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                        </svg>
+                        <span class="badge-dot"></span>
+                    </button>
+                    
+                    <div class="user-profile" id="user-profile-badge" style="cursor: pointer;" title="Click to Switch Account / Sign Out">
+                        <div class="user-avatar" id="header-avatar">?</div>
+                        <div class="user-details">
+                            <span class="user-name" id="header-user-name">Sign In Required</span>
+                            <span class="user-role" id="header-user-role">Lead Recruiter</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dynamic View Area -->
+            <div id="view-container" class="view-container">
+                <!-- Views will be dynamically loaded here by app.js -->
+                <div class="view-loading">
+                    <div class="spinner"></div>
+                    <p>Initializing TalentAI System...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Dedicated Login Page View overlay -->
+    <div id="login-page-container" class="login-page-container" style="display: flex;">
+        <div class="glass-card login-card">
+            <div class="login-header">
+                <div class="app-logo" style="justify-content: center; margin-bottom: 12px;">
+                    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--primary)" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                        <polyline points="2 17 12 22 22 17" />
+                        <polyline points="2 12 12 17 22 12" />
+                    </svg>
+                    <span style="font-size: 1.5rem; font-weight: 800; background: linear-gradient(135deg, #fff 0%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">TalentAI Enterprise</span>
+                </div>
+                <h2>Enterprise Recruitment Portal</h2>
+                <p>Select a pre-configured recruiter account below for instant 1-click login, or sign in with your official Gmail address.</p>
+            </div>
+
+            <!-- Quick Accounts 1-Click Selector Grid -->
+            <div style="margin-bottom: 20px;">
+                <span class="section-label">Pre-Configured Enterprise Accounts:</span>
+                <div class="account-cards-grid">
+                    <div class="account-card" data-email="sarah.recruiter@gmail.com" data-name="Sarah Jenkins" data-role="recruiter" data-initials="SJ">
+                        <div class="account-card-avatar">SJ</div>
+                        <div class="account-card-info">
+                            <span class="account-card-name">Sarah Jenkins</span>
+                            <span class="account-card-email">sarah.recruiter@gmail.com</span>
+                            <span class="account-card-role">Lead Recruiter</span>
+                        </div>
+                    </div>
+
+                    <div class="account-card" data-email="david.hm@gmail.com" data-name="David Miller" data-role="hiring_manager" data-initials="DM">
+                        <div class="account-card-avatar" style="background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);">DM</div>
+                        <div class="account-card-info">
+                            <span class="account-card-name">David Miller</span>
+                            <span class="account-card-email">david.hm@gmail.com</span>
+                            <span class="account-card-role">Hiring Manager</span>
+                        </div>
+                    </div>
+
+                    <div class="account-card" data-email="elena.auditor@gmail.com" data-name="Elena Rostova" data-role="auditor" data-initials="ER">
+                        <div class="account-card-avatar" style="background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);">ER</div>
+                        <div class="account-card-info">
+                            <span class="account-card-name">Elena Rostova</span>
+                            <span class="account-card-email">elena.auditor@gmail.com</span>
+                            <span class="account-card-role">Compliance Auditor</span>
+                        </div>
+                    </div>
+
+                    <div class="account-card" data-email="alex.admin@acme-corp.com" data-name="Alex Rivera" data-role="org_admin" data-initials="AR">
+                        <div class="account-card-avatar" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">AR</div>
+                        <div class="account-card-info">
+                            <span class="account-card-name">Alex Rivera</span>
+                            <span class="account-card-email">alex.admin@acme-corp.com</span>
+                            <span class="account-card-role">Organization Admin</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider-line"><span>OR SIGN IN WITH CUSTOM GMAIL ID</span></div>
+
+            <!-- Custom Gmail Login Form -->
+            <form id="custom-login-form" style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="text-align: left;">
+                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: block;">Gmail / Corporate Email</label>
+                    <input type="email" id="custom-email-input" class="select-filter" placeholder="e.g. your.name@gmail.com" required style="width: 100%; padding: 10px 14px; font-size: 0.875rem;" />
+                </div>
+
+                <div style="text-align: left;">
+                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: block;">Assigned Hiring Role</label>
+                    <select id="custom-role-select" class="select-filter" style="width: 100%; padding: 10px 14px; font-size: 0.875rem;">
+                        <option value="recruiter">Lead Recruiter</option>
+                        <option value="hiring_manager">Hiring Manager</option>
+                        <option value="auditor">Compliance Reviewer</option>
+                        <option value="org_admin">Organization Admin</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 0.9rem; margin-top: 6px; font-weight: 600;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                        <polyline points="10 17 15 12 10 7"/>
+                        <line x1="15" y1="12" x2="3" y2="12"/>
+                    </svg>
+                    Sign In with Email
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
