@@ -26,7 +26,6 @@ services:
         generateValue: true
 
 databases:
-  # 3. PostgreSQL Database
+  # 3. Managed PostgreSQL Database
   - name: recruitment-db
     databaseName: recruitment_db
-    user: postgres
