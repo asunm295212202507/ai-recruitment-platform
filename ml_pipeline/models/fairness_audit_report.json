@@ -1,0 +1,33 @@
+{
+  "audit_standard": "NYC Local Law 144 AI Automated Employment Decision Tools (AEDT)",
+  "model_version": "v3.5.2-prod",
+  "overall_status": "PASSED",
+  "min_disparate_impact_ratio": 0.8691,
+  "adverse_impact_threshold": 0.8,
+  "group_breakdown": {
+    "Group_A": {
+      "total_candidates": 246,
+      "selected_candidates": 77,
+      "selection_rate": 0.313,
+      "disparate_impact_ratio": 0.9663
+    },
+    "Group_B": {
+      "total_candidates": 247,
+      "selected_candidates": 80,
+      "selection_rate": 0.3239,
+      "disparate_impact_ratio": 1.0
+    },
+    "Group_C": {
+      "total_candidates": 238,
+      "selected_candidates": 67,
+      "selection_rate": 0.2815,
+      "disparate_impact_ratio": 0.8691
+    },
+    "Group_D": {
+      "total_candidates": 269,
+      "selected_candidates": 79,
+      "selection_rate": 0.2937,
+      "disparate_impact_ratio": 0.9068
+    }
+  }
+}

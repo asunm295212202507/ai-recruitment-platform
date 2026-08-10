@@ -1,0 +1,14 @@
+{
+  "total_samples": 1000,
+  "categories": {
+    "Engineering": 216,
+    "Design": 204,
+    "Infrastructure": 200,
+    "Product": 198,
+    "Analytics": 182
+  },
+  "avg_years_experience": 8.05,
+  "avg_match_score": 58.03,
+  "avg_salary": 164546.0,
+  "dataset_path": "C:\\Users\\magis\\.gemini\\antigravity\\scratch\\ai-recruitment-platform\\ml_pipeline\\dataset\\recruitment_training_data.csv"
+}

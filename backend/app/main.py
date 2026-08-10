@@ -24,6 +24,7 @@ app.include_router(candidates.router, prefix=f"{settings.API_V1_STR}/candidates"
 app.include_router(matching.router, prefix=f"{settings.API_V1_STR}/matching", tags=["AI Matching & Ranking"])
 app.include_router(audit.router, prefix=f"{settings.API_V1_STR}/audit", tags=["Governance & Audit Logs"])
 app.include_router(analytics.router, prefix=f"{settings.API_V1_STR}/analytics", tags=["Recruiter Analytics"])
+app.include_router(ml.router, prefix=f"{settings.API_V1_STR}/ml", tags=["ML Model Training & Pipelines"])
 
 @app.get("/")
 async def root_health_check():

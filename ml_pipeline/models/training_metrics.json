@@ -1,0 +1,19 @@
+{
+  "status": "trained",
+  "timestamp": "2026-08-10T16:13:09.102168",
+  "total_training_samples": 1000,
+  "models": {
+    "category_classifier": {
+      "accuracy": 1.0
+    },
+    "match_ranker": {
+      "rmse": 7.0228,
+      "r2_score": 0.7257
+    },
+    "salary_predictor": {
+      "rmse": 889.9977,
+      "r2_score": 0.9991
+    }
+  },
+  "artifacts_directory": "C:\\Users\\magis\\.gemini\\antigravity\\scratch\\ai-recruitment-platform\\ml_pipeline\\models"
+}
