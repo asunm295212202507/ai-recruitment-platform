@@ -37,6 +37,13 @@
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* --- Auth Form Styles --- */
+.form-label { display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px; letter-spacing:0.02em; }
+.form-input { width:100%; padding:11px 14px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:var(--border-radius-sm); color:var(--text-primary); font-family:var(--font-main); font-size:0.875rem; transition:var(--transition-smooth); outline:none; }
+.form-input:focus { border-color:var(--primary); background:rgba(99,102,241,0.07); box-shadow:0 0 0 3px rgba(99,102,241,0.15); }
+.form-input::placeholder { color:var(--text-muted); }
+.form-field-group { display:flex; flex-direction:column; }
+
 /* --- Reset & Global Elements --- */
 * {
     margin: 0;

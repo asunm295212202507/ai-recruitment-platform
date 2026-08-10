@@ -500,7 +500,7 @@ function renderRankingRows(jobId) {
         else if (index === 2) rankClass = 'third';
         
         const successVal = c.predictions ? c.predictions.successIndex : 75;
-        const salaryVal = c.predictions ? c.predictions.salary : '$120,000 - $130,000';
+        const salaryVal = c.predictions ? c.predictions.salary : '₹4 LPA - ₹6 LPA';
         
         return `
             <tr class="ranking-row">
@@ -916,14 +916,531 @@ function renderScreener(container) {
         e.preventDefault();
         dropZone.classList.remove('dragover');
         if (e.dataTransfer.files.length > 0) {
-            handleFileMock(e.dataTransfer.files[0].name);
+            parseRealResume(e.dataTransfer.files[0]);
         }
     });
 }
 
 function handleFileSelection(e) {
     if (e.target.files.length > 0) {
-        handleFileMock(e.target.files[0].name);
+        parseRealResume(e.target.files[0]);
+    }
+}
+
+// ── Real Resume Parser ────────────────────────────────────────────────────────
+async function extractTextFromFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    if (ext === 'pdf') {
+        // Use PDF.js to extract full text from PDF
+        if (typeof pdfjsLib === 'undefined') {
+            throw new Error('PDF.js not loaded yet. Please try again in a moment.');
+        }
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            fullText += content.items.map(item => item.str).join(' ') + '\n';
+        }
+        return fullText;
+    } else if (ext === 'txt' || ext === 'md') {
+        return await file.text();
+    } else if (ext === 'doc' || ext === 'docx') {
+        // For DOC/DOCX without mammoth.js, read as plain text (best effort)
+        return await file.text();
+    } else {
+        return await file.text();
+    }
+}
+
+function extractResumeInfo(rawText) {
+    const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const text = rawText;
+
+    // ── Name Extraction — strict top-of-resume, name tokens only ─────────────
+    //
+    // Rule: Walk the first lines of the resume. For each line, collect ONLY
+    // valid name tokens (capitalized words). Stop collecting the moment we hit:
+    //   • a digit         → phone / year / postal
+    //   • @               → email
+    //   • |  /  \  (  )   → separator / contact block
+    //   • a known STOP word (job title, location, contact label, descriptor)
+    // Accept the result if we have at least one word of length ≥ 3.
+
+    const STOP_WORDS = new Set([
+        // job titles & descriptors
+        'aspiring','seeking','software','hardware','senior','junior','lead','principal',
+        'staff','associate','fullstack','full','stack','frontend','backend','data','machine',
+        'deep','cloud','devops','mobile','android','ios','web','ui','ux','product','project',
+        'program','business','system','network','security','embedded','game','qa','test',
+        'automation','developer','engineer','designer','analyst','architect','manager',
+        'consultant','scientist','researcher','intern','fresher','graduate','student',
+        'professional','specialist','expert','enthusiast','learner','passionate','motivated',
+        'dedicated','experienced','highly','skilled','proficient','versatile','dynamic',
+        'innovative','entry','level','mid','experienced','technology','technologies',
+        // contact labels
+        'phone','mobile','email','linkedin','github','website','contact','address',
+        'location','city','state','country','india','usa','uk','canada','australia',
+        // common Indian city names that could appear inline
+        'chennai','mumbai','delhi','bangalore','bengaluru','hyderabad','pune','kolkata',
+        'ahmedabad','jaipur','lucknow','kochi','coimbatore','madurai','trichy','salem',
+        'tamil','nadu','pradesh','maharashtra','karnataka','telangana','kerala','gujarat',
+        // section headers
+        'resume','cv','curriculum','vitae','profile','summary','objective','experience',
+        'education','skills','projects','references','portfolio','qualifications','about',
+        'declaration','certifications','awards','languages','hobbies','interests',
+    ]);
+
+    // Given a raw line, extract ONLY the leading name tokens and return them.
+    const strictNameFromLine = (rawLine) => {
+        // Split on whitespace; also split on separators like | / • – —
+        const tokens = rawLine.trim().split(/[\s|/•–—\\()\[\]]+/);
+        const parts = [];
+        for (const tok of tokens) {
+            // Remove trailing punctuation like period/comma except inside initials
+            const t = tok.replace(/[,;:!?]+$/, '').trim();
+            if (!t) continue;
+            if (/\d/.test(t)) break;           // digit → stop
+            if (/@/.test(t)) break;            // email → stop
+            if (/^[+\-]/.test(t)) break;       // phone prefix → stop
+            const lower = t.toLowerCase().replace(/[^a-z]/g, '');
+            if (STOP_WORDS.has(lower)) break;  // stop word → stop
+            // Must start with a capital letter to be a name token
+            if (!/^[A-Z]/.test(t)) break;
+            // Strip any trailing period only if it looks like an initial (single letter)
+            const clean = (t.length === 2 && t.endsWith('.')) ? t[0] : t.replace(/\.$/, '');
+            parts.push(clean);
+            if (parts.length >= 5) break;      // max 5 name tokens
+        }
+        return parts.join(' ');
+    };
+
+    let name = '';
+
+    // Pass 1 — scan first 12 lines strictly
+    const topLines = rawText.split(/[\r\n]+/).slice(0, 20).map(l => l.trim()).filter(Boolean);
+    for (const line of topLines.slice(0, 12)) {
+        // Skip obvious non-name lines immediately
+        if (!line || line.length > 120) continue;
+        if (/^\d/.test(line)) continue;                    // starts with digit
+        if (/@/.test(line)) continue;                      // contains email
+        if (/[|/•]/.test(line) && line.length > 40) continue; // long separator line
+
+        const candidate = strictNameFromLine(line);
+        if (!candidate) continue;
+
+        const words = candidate.split(' ');
+        // Accept: 2+ words, OR 1 word ≥ 4 letters (single first name)
+        const valid = words.length >= 2 || (words.length === 1 && words[0].length >= 4);
+        if (valid) {
+            name = candidate;
+            break;
+        }
+    }
+
+    // Pass 2 — ALL CAPS line (e.g. "SANJAI M") → convert to Title Case then re-extract
+    if (!name) {
+        for (const line of topLines.slice(0, 12)) {
+            if (!line || /\d/.test(line) || /@/.test(line)) continue;
+            if (/^[A-Z][A-Z\s'-]{1,39}$/.test(line)) {
+                const titleCase = line.split(' ')
+                    .map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+                const candidate = strictNameFromLine(titleCase);
+                if (candidate && candidate.length >= 2) { name = candidate; break; }
+            }
+        }
+    }
+
+    // Pass 3 — "Name:" / "Full Name:" label anywhere in first 40 lines
+    if (!name) {
+        const m = rawText.match(/(?:full\s+)?name\s*[:\-]\s*([A-Za-z][^\n\r,|]{1,50})/im);
+        if (m) {
+            const candidate = strictNameFromLine(m[1]);
+            if (candidate && candidate.length >= 2) name = candidate;
+        }
+    }
+
+    // Pass 4 — look for name just above the email address
+    if (!name) {
+        const eIdx = rawText.search(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+        if (eIdx > 10) {
+            const before = rawText.substring(Math.max(0, eIdx - 250), eIdx);
+            const bLines = before.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
+            for (let i = bLines.length - 1; i >= 0; i--) {
+                const candidate = strictNameFromLine(bLines[i]);
+                if (candidate && candidate.split(' ').length >= 1 && candidate.length >= 3) {
+                    name = candidate; break;
+                }
+            }
+        }
+    }
+
+    // Pass 5 — last resort: use only the alphabetic prefix of the email local part
+    if (!name) {
+        const em = rawText.match(/([a-zA-Z]{3,})[\d]*@/);
+        if (em) {
+            name = em[1].charAt(0).toUpperCase() + em[1].slice(1).toLowerCase();
+        } else {
+            name = 'Resume Applicant';
+        }
+    }
+
+    // ── Email Extraction ──────────────────────────────────────────────────────
+    const emailMatch = text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    const email = emailMatch ? emailMatch[0] : `${name.split(' ')[0].toLowerCase()}@resume.com`;
+
+    // ── Phone Extraction ──────────────────────────────────────────────────────
+    const phoneMatch = text.match(/(?:\+?\d[\d\s\-().]{7,15}\d)/);
+    const phone = phoneMatch ? phoneMatch[0].trim() : '';
+
+    // ── Location Extraction ───────────────────────────────────────────────────
+    const locationMatch = text.match(/(?:Location|Address|City|Based in)[:\s]*([A-Za-z ,]+(?:,\s*[A-Z]{2})?)/i);
+    const location = locationMatch ? locationMatch[1].trim() : '';
+
+    // ── LinkedIn Extraction ───────────────────────────────────────────────────
+    const linkedinMatch = text.match(/linkedin\.com\/in\/([a-zA-Z0-9\-_]+)/i);
+    const linkedin = linkedinMatch ? `linkedin.com/in/${linkedinMatch[1]}` : '';
+
+    // ── Experience Extraction (STRICT — only real work, no guessing) ──────────
+    //
+    // RULES:
+    //  1. Only count Full-time jobs and Internships
+    //  2. Academic projects / coursework → NOT experience
+    //  3. Never infer from skills or job title
+    //  4. No experience section → 0–1 years (Fresher)
+
+    let yearsExp = 0;           // numeric (for scoring/salary)
+    let yearsExpDisplay = '';   // shown in UI
+    let experienceLevel = 'Fresher';  // Fresher / Junior / Mid / Senior
+    let expConfidence = 'Low';  // High / Medium / Low
+    let expReason = '';
+
+    // ── Does the resume have a real Work Experience section? ─────────────────
+    const hasWorkSection = /\b(work\s+experience|professional\s+experience|employment|work\s+history|career\s+history|experience)\s*[:\n]/i.test(text);
+    const hasInternSection = /\b(internship|intern\s+experience|training|industrial\s+training)\s*[:\n]?/i.test(text);
+    const hasProjectOnly = !hasWorkSection && !hasInternSection && /\b(projects?|academic\s+projects?|personal\s+projects?)\s*[:\n]/i.test(text);
+
+    if (hasProjectOnly || (!hasWorkSection && !hasInternSection)) {
+        // Only education + projects → Fresher
+        yearsExp = 0;
+        yearsExpDisplay = '0–1';
+        experienceLevel = 'Fresher';
+        expConfidence = 'High';
+        expReason = 'No professional work experience or internship section found. Only education/projects present.';
+    } else {
+        // ── Try to calculate duration from actual job date ranges ─────────────
+        // Match patterns: "Jan 2020 – Mar 2023", "2019 - Present", "2020–2022"
+        const dateRangePattern = /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+)?(20\d{2}|19\d{2})\s*(?:–|-|to)\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+)?(20\d{2}|19\d{2}|present|current|till\s+date|to\s+date)/gi;
+        const currentYear = new Date().getFullYear();
+        let totalMonths = 0;
+        let rangesFound = 0;
+        let match;
+
+        // Only scan within experience/internship sections, not education dates
+        // Extract text between experience header and next major section
+        const expSectionMatch = text.match(/(?:work\s+experience|professional\s+experience|employment|internship|intern\s+experience)[\s\S]{0,2000}/i);
+        const expText = expSectionMatch ? expSectionMatch[0] : '';
+
+        // Also remove education section dates to avoid counting graduation years
+        const cleanExpText = expText.replace(/(?:education|qualification|academic)[\s\S]{0,500}/i, '');
+        const scanText = cleanExpText || expText;
+
+        while ((match = dateRangePattern.exec(scanText)) !== null) {
+            const startYr = parseInt(match[1]);
+            const endRaw = match[2].toLowerCase();
+            const endYr = /present|current|till|to\s*date/.test(endRaw) ? currentYear : parseInt(endRaw);
+            if (!isNaN(startYr) && !isNaN(endYr) && endYr >= startYr) {
+                totalMonths += (endYr - startYr) * 12;
+                rangesFound++;
+            }
+        }
+
+        if (rangesFound > 0 && totalMonths > 0) {
+            const totalYears = totalMonths / 12;
+            const lo = Math.floor(totalYears);
+            const hi = lo + 1;
+            yearsExp = lo;
+            yearsExpDisplay = lo === 0 ? '0–1' : `${lo}–${hi}`;
+            expConfidence = 'High';
+            expReason = `Calculated from ${rangesFound} date range(s) found in experience section. Total: ~${totalYears.toFixed(1)} years.`;
+        } else {
+            // Fallback: explicit "X years of experience" statement
+            const explicitMatch = text.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:work\s+|professional\s+)?experience/i);
+            if (explicitMatch) {
+                const n = parseFloat(explicitMatch[1]);
+                yearsExp = Math.floor(n);
+                const lo = Math.floor(n);
+                const hi = lo + 1;
+                yearsExpDisplay = lo === 0 ? '0–1' : `${lo}–${hi}`;
+                expConfidence = 'Medium';
+                expReason = `Explicit statement found: "${explicitMatch[0].trim()}".`;
+            } else if (hasInternSection) {
+                // Has internship but no calculable dates
+                yearsExp = 0;
+                yearsExpDisplay = '0–2';
+                experienceLevel = 'Fresher';
+                expConfidence = 'Medium';
+                expReason = 'Internship section detected but no calculable date ranges found.';
+            } else {
+                // Has work section but no dates readable
+                yearsExp = 1;
+                yearsExpDisplay = '1–2';
+                expConfidence = 'Low';
+                expReason = 'Work experience section found but dates could not be calculated.';
+            }
+        }
+
+        // Determine experience level from numeric value
+        if (yearsExp === 0) experienceLevel = 'Fresher';
+        else if (yearsExp <= 2) experienceLevel = 'Junior';
+        else if (yearsExp <= 5) experienceLevel = 'Mid';
+        else experienceLevel = 'Senior';
+    }
+
+
+    // ── Skills Extraction ─────────────────────────────────────────────────────
+    const allSkills = [
+        // Frontend
+        'React', 'Vue', 'Angular', 'Next.js', 'Nuxt', 'Svelte', 'TypeScript', 'JavaScript',
+        'HTML', 'CSS', 'SCSS', 'Tailwind', 'Bootstrap', 'Redux', 'GraphQL', 'REST API',
+        // Backend
+        'Node.js', 'Express', 'Python', 'Django', 'FastAPI', 'Flask', 'Ruby', 'Rails',
+        'Java', 'Spring', 'Kotlin', 'Go', 'Rust', 'PHP', 'Laravel', 'C#', '.NET',
+        // Data & AI
+        'Machine Learning', 'Deep Learning', 'TensorFlow', 'PyTorch', 'Scikit-learn',
+        'Pandas', 'NumPy', 'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Elasticsearch',
+        'Data Analysis', 'Power BI', 'Tableau', 'Excel', 'Spark', 'Hadoop',
+        // Cloud & DevOps
+        'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'CI/CD', 'Terraform', 'Ansible',
+        'Jenkins', 'GitHub Actions', 'Linux', 'Nginx', 'Microservices',
+        // Product & Design
+        'Figma', 'Agile', 'Scrum', 'Jira', 'Confluence', 'Product Management', 'UX Research',
+        'Wireframing', 'Prototyping', 'Design Systems', 'User Research',
+        // Soft Skills
+        'Leadership', 'Communication', 'Problem Solving', 'Team Management', 'Mentoring'
+    ];
+
+    const foundSkills = {};
+    allSkills.forEach(skill => {
+        const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+        if (regex.test(text)) {
+            // Assign a proficiency 70–95 based on context clues
+            let level = 75;
+            const ctx = text.match(new RegExp(`.{0,60}${escaped}.{0,60}`, 'i'));
+            if (ctx) {
+                const ctxStr = ctx[0].toLowerCase();
+                if (/expert|advanced|proficient|senior|lead|5\+|7\+|8\+|10\+/i.test(ctxStr)) level = 90;
+                else if (/intermediate|3\+|4\+|working knowledge/i.test(ctxStr)) level = 78;
+                else if (/basic|beginner|familiar|exposure|1\+|2\+/i.test(ctxStr)) level = 65;
+                else level = 80 + Math.floor(Math.random() * 12);
+            }
+            foundSkills[skill] = level;
+        }
+    });
+
+    // ── Education Extraction — degree abbreviations ONLY ─────────────────────
+    // Rules: ONLY return short degree name. Never college, location, or dates.
+    const DEGREE_MAP = [
+        // Must check longer/specific patterns first to avoid partial matches
+        { re: /bachelor\s+of\s+computer\s+applications?/i,              abbr: 'BCA' },
+        { re: /master\s+of\s+computer\s+applications?/i,                abbr: 'MCA' },
+        { re: /bachelor\s+of\s+business\s+administration/i,             abbr: 'BBA' },
+        { re: /master\s+of\s+business\s+administration|\bMBA\b/i,       abbr: 'MBA' },
+        { re: /bachelor\s+of\s+(?:engineering|technology)|\bB\.?\s*E\.?\b|\bB\.?Tech\b/i, abbr: 'B.Tech / B.E' },
+        { re: /master\s+of\s+(?:engineering|technology)|\bM\.?\s*E\.?\b|\bM\.?Tech\b/i,   abbr: 'M.Tech / M.E' },
+        { re: /bachelor\s+of\s+science\s+in\s+computer\s+science|\bB\.?Sc\.?\s*\(?CS\)?/i, abbr: 'B.Sc (CS)' },
+        { re: /master\s+of\s+science\s+in\s+computer\s+science|\bM\.?Sc\.?\s*\(?CS\)?/i,   abbr: 'M.Sc (CS)' },
+        { re: /bachelor\s+of\s+science\s+in\s+information\s+technology|\bB\.?Sc\.?\s*\(?IT\)?/i, abbr: 'B.Sc (IT)' },
+        { re: /bachelor\s+of\s+science|\bB\.?Sc\b/i,                    abbr: 'B.Sc' },
+        { re: /master\s+of\s+science|\bM\.?Sc\b/i,                      abbr: 'M.Sc' },
+        { re: /bachelor\s+of\s+commerce|\bB\.?Com\b/i,                  abbr: 'B.Com' },
+        { re: /master\s+of\s+commerce|\bM\.?Com\b/i,                    abbr: 'M.Com' },
+        { re: /bachelor\s+of\s+arts|\bB\.?A\b/i,                        abbr: 'B.A' },
+        { re: /master\s+of\s+arts|\bM\.?A\b/i,                          abbr: 'M.A' },
+        { re: /doctor\s+of\s+philosophy|\bPh\.?D\b/i,                   abbr: 'Ph.D' },
+        { re: /master\s+of\s+computer\s+science|\bMCS\b/i,              abbr: 'MCS' },
+        { re: /\bdiploma\b/i,                                            abbr: 'Diploma' },
+        { re: /higher\s+secondary|12th\s+(?:std|grade|pass)|\bHSC\b|\b10\s*\+\s*2\b/i, abbr: 'HSC (12th)' },
+        { re: /secondary\s+school|10th\s+(?:std|grade|pass)|\bSSLC\b|\bSSC\b/i,        abbr: 'SSLC (10th)' },
+    ];
+
+    const foundDegrees = [];
+    for (const { re, abbr } of DEGREE_MAP) {
+        if (re.test(text) && !foundDegrees.includes(abbr)) {
+            foundDegrees.push(abbr);
+        }
+    }
+    // education is a clean comma-separated list of degree abbreviations only
+    const education = foundDegrees.join(', ');
+
+    // ── Summary ───────────────────────────────────────────────────────────────
+    const summaryMatch = text.match(/(?:summary|objective|about me|profile)[:\s\n]+([^•\n]{50,300})/i);
+    const summary = summaryMatch
+        ? summaryMatch[1].trim()
+        : `${yearsExpDisplay !== '0' ? yearsExpDisplay + ' years of' : 'Entry-level'} professional with skills in ${Object.keys(foundSkills).slice(0, 4).join(', ')}.`;
+
+    // ── Classification ────────────────────────────────────────────────────────
+    const skillKeys = Object.keys(foundSkills);
+    let classification = 'Professional';
+    let altRoles = ['Specialist', 'Consultant'];
+    const skillLower = skillKeys.map(s => s.toLowerCase()).join(' ');
+
+    if (/react|vue|angular|svelte|next\.js|frontend|html|css/.test(skillLower)) {
+        classification = 'Frontend Engineer'; altRoles = ['UI Developer', 'Full-Stack Developer'];
+    } else if (/node|express|django|spring|fastapi|backend/.test(skillLower)) {
+        classification = 'Backend Engineer'; altRoles = ['API Developer', 'Full-Stack Developer'];
+    } else if (/machine learning|deep learning|tensorflow|pytorch|data science/.test(skillLower)) {
+        classification = 'Data Scientist / ML Engineer'; altRoles = ['AI Engineer', 'Research Engineer'];
+    } else if (/sql|pandas|tableau|power bi|analytics|data analyst/.test(skillLower)) {
+        classification = 'Data Analyst'; altRoles = ['Business Intelligence Analyst', 'Reporting Analyst'];
+    } else if (/aws|azure|gcp|kubernetes|docker|terraform|devops/.test(skillLower)) {
+        classification = 'DevOps / Cloud Engineer'; altRoles = ['Site Reliability Engineer', 'Infrastructure Engineer'];
+    } else if (/figma|ux|ui|wireframe|prototyp|design/.test(skillLower)) {
+        classification = 'UI/UX Designer'; altRoles = ['Product Designer', 'Visual Designer'];
+    } else if (/agile|scrum|product|roadmap|jira/.test(skillLower)) {
+        classification = 'Product Manager'; altRoles = ['Program Manager', 'Technical Product Owner'];
+    } else if (/java|kotlin|spring|android/.test(skillLower)) {
+        classification = 'Java / Android Engineer'; altRoles = ['Mobile Developer', 'Backend Engineer'];
+    } else if (/python/.test(skillLower)) {
+        classification = 'Python Developer'; altRoles = ['Backend Engineer', 'Automation Engineer'];
+    }
+    if (yearsExp >= 8) classification = 'Senior ' + classification;
+
+    // ── Match Score Calculation ───────────────────────────────────────────────
+    const jobId = document.getElementById('screener-job-select').value;
+    const job = state.jobs.find(j => j.id === jobId);
+    let score = 50;
+    if (job && job.minRequirements) {
+        const jobReqKeys = Object.keys(job.minRequirements).map(k => k.toLowerCase());
+        const matchedCount = jobReqKeys.filter(req =>
+            Object.keys(foundSkills).some(sk => sk.toLowerCase().includes(req) || req.includes(sk.toLowerCase()))
+        ).length;
+        const totalReqs = Math.max(1, jobReqKeys.length);
+        score = Math.round(Math.min(98, 50 + (matchedCount / totalReqs) * 35 + Math.min(10, yearsExp) + (Object.keys(foundSkills).length > 5 ? 5 : 0)));
+    } else {
+        score = Math.min(98, 60 + Math.min(20, yearsExp * 1.5) + Math.min(15, Object.keys(foundSkills).length));
+    }
+
+    // ── Strengths & Gaps ──────────────────────────────────────────────────────
+    const topSkills = Object.entries(foundSkills).sort((a, b) => b[1] - a[1]).slice(0, 4).map(e => e[0]);
+    const strengths = topSkills.length > 0
+        ? topSkills
+        : ['Strong communication', 'Problem-solving ability', 'Cross-functional collaboration'];
+
+    const commonGaps = ['Leadership', 'System Design', 'Cloud Architecture', 'Team Management', 'Data Modeling'];
+    const gaps = commonGaps.filter(g => !Object.keys(foundSkills).some(sk => sk.toLowerCase().includes(g.toLowerCase()))).slice(0, 3);
+
+    // ── Salary Estimate (in Indian Rupees — LPA) ─────────────────────────────
+    // Base: 3 LPA fresher, +1.2 LPA per year of exp, +0.3 LPA per skill
+    const baseLPA = 3.0 + yearsExp * 1.2 + Object.keys(foundSkills).length * 0.3;
+    const salLow  = Math.max(3, Math.round(baseLPA * 10) / 10);
+    const salHigh = Math.max(4, Math.round(baseLPA * 1.2 * 10) / 10);
+    const salaryLow  = `₹${salLow} LPA`;
+    const salaryHigh = `₹${salHigh} LPA`;
+
+    return {
+        name, email, phone, location, linkedin,
+        yearsExp, yearsExpDisplay, experienceLevel, expConfidence, expReason,
+        skills: foundSkills, summary, education,
+        classification, altRoles, strengths, gaps, score,
+        salary: `${salaryLow} - ${salaryHigh}`,
+        successIndex: Math.min(97, Math.round(score * 0.93 + Math.random() * 5)),
+        rawTextLength: rawText.length
+    };
+}
+
+async function parseRealResume(file) {
+    const overlay = document.getElementById('scan-overlay');
+    const logs = document.getElementById('scan-log-container');
+    logs.innerHTML = '';
+    overlay.classList.add('active');
+
+    const addLog = (msg, cls = '') => {
+        const line = document.createElement('div');
+        line.className = 'scan-log-line ' + cls;
+        line.innerText = '> ' + msg;
+        logs.appendChild(line);
+        logs.scrollTop = logs.scrollHeight;
+    };
+
+    addLog(`File received: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+
+    try {
+        addLog('Extracting raw text from document...');
+        const rawText = await extractTextFromFile(file);
+
+        if (!rawText || rawText.trim().length < 30) {
+            addLog('Warning: Could not extract enough text. Try uploading a .txt or .pdf file.', 'warning');
+            overlay.classList.remove('active');
+            showToast('Could not read resume content. Please upload a PDF or TXT file.', 'warning');
+            return;
+        }
+
+        addLog(`Extracted ${rawText.length} characters of resume content.`);
+        addLog('Running NLP extraction: Name, Email, Phone...');
+        const info = extractResumeInfo(rawText);
+
+        addLog(`Identity resolved: ${info.name} (${info.email})`);
+        addLog(`Education: ${info.education || 'Not detected'}`);
+        addLog(`Detected ${Object.keys(info.skills).length} skills from resume content.`);
+        addLog(`Classification: ${info.classification} | Level: ${info.experienceLevel}`);
+        addLog(`Experience: ${info.yearsExpDisplay} years [${info.expConfidence} confidence]`);
+        addLog(`Reason: ${info.expReason}`);
+        addLog(`Match Score computed: ${info.score}%`, 'success');
+        addLog('Screener complete. Compiling metrics dashboard...', 'success');
+
+        setTimeout(() => {
+            overlay.classList.remove('active');
+
+            const jobId = document.getElementById('screener-job-select').value;
+            const parsedCandidate = {
+                id: `cand-${Date.now()}`,
+                name: info.name,
+                email: info.email,
+                phone: info.phone,
+                location: info.location,
+                linkedin: info.linkedin,
+                score: info.score,
+                matchCategory: info.score >= 85 ? 'excellent' : info.score >= 70 ? 'good' : 'fair',
+                status: 'Screened',
+                jobId: jobId,
+                skills: info.skills,
+                summary: info.summary,
+                education: info.education,
+                strengths: info.strengths,
+                gaps: info.gaps,
+                yearsExperience: info.yearsExp,
+                yearsExperienceDisplay: info.yearsExpDisplay,
+                experienceLevel: info.experienceLevel,
+                expConfidence: info.expConfidence,
+                expReason: info.expReason,
+                classification: info.classification,
+                altRoles: info.altRoles,
+                predictions: {
+                    salary: info.salary,
+                    successIndex: info.successIndex,
+                    retentionRisk: info.yearsExp > 5 ? 'Low' : 'Medium',
+                    interviewGrade: info.score >= 85 ? 'A' : info.score >= 75 ? 'B+' : 'B'
+                }
+            };
+
+            state.candidates.unshift(parsedCandidate);
+            addAuditHistoryEntry('candidate:screen', `Resume: ${file.name}`,
+                `Real resume parsed for ${info.name} (${info.email}). Skills: ${Object.keys(info.skills).length}. Match Score: ${info.score}%. Classification: ${info.classification}`);
+            showToast(`Resume parsed: ${info.name} — ${info.score}% match!`, 'success');
+            document.getElementById('screener-setup-container').style.display = 'none';
+            renderScreeningReport(parsedCandidate);
+        }, 800);
+
+    } catch (err) {
+        overlay.classList.remove('active');
+        addLog('Error parsing resume: ' + err.message, 'error');
+        showToast('Error reading file: ' + err.message, 'error');
     }
 }
 
@@ -977,7 +1494,7 @@ function handleFileMock(fileName) {
                     classification: 'Agile Product Manager',
                     altRoles: ['Growth Product Owner', 'Technical Analyst'],
                     predictions: {
-                        salary: '$125,000 - $138,000',
+                        salary: '₹12 LPA - ₹15 LPA',
                         successIndex: 91,
                         retentionRisk: 'Low',
                         interviewGrade: 'A-'
@@ -1001,7 +1518,7 @@ function handleFileMock(fileName) {
                     classification: 'Senior Software Developer',
                     altRoles: ['Devops Integration Lead', 'Backend Specialist'],
                     predictions: {
-                        salary: '$135,000 - $148,000',
+                        salary: '₹14 LPA - ₹18 LPA',
                         successIndex: 86,
                         retentionRisk: 'Low',
                         interviewGrade: 'B+'
@@ -1066,6 +1583,49 @@ function renderScreeningReport(candidate) {
                         <span class="profile-label">Alignment Role</span>
                         <span class="profile-val">${job.title}</span>
                     </div>
+                    <div class="candidate-profile-row">
+                        <span class="profile-label">Experience</span>
+                        <span class="profile-val">
+                            ${(() => {
+                                const d = candidate.yearsExperienceDisplay || '0–1';
+                                const lvl = candidate.experienceLevel || 'Fresher';
+                                const conf = candidate.expConfidence || '';
+                                const lvlColor = lvl === 'Fresher' ? '#94a3b8' : lvl === 'Junior' ? '#0ea5e9' : lvl === 'Mid' ? '#10b981' : '#f59e0b';
+                                return `${d} yrs &nbsp;<span style="background:${lvlColor}22;color:${lvlColor};border:1px solid ${lvlColor}44;border-radius:4px;padding:1px 6px;font-size:0.68rem;font-weight:700;">${lvl}</span>${conf ? `&nbsp;<span style="color:var(--text-muted);font-size:0.68rem;">${conf} confidence</span>` : ''}`;
+                            })()}
+                        </span>
+                    </div>
+                    ${candidate.expReason ? `
+                    <div class="candidate-profile-row" style="align-items:flex-start;">
+                        <span class="profile-label" style="padding-top:2px;">Exp. Basis</span>
+                        <span class="profile-val" style="font-size:0.7rem;color:var(--text-muted);line-height:1.4;">${candidate.expReason}</span>
+                    </div>` : ''}
+
+                    ${candidate.phone ? `
+                    <div class="candidate-profile-row">
+                        <span class="profile-label">Phone</span>
+                        <span class="profile-val">${candidate.phone}</span>
+                    </div>` : ''}
+                    ${candidate.location ? `
+                    <div class="candidate-profile-row">
+                        <span class="profile-label">Location</span>
+                        <span class="profile-val">${candidate.location}</span>
+                    </div>` : ''}
+                    ${candidate.linkedin ? `
+                    <div class="candidate-profile-row">
+                        <span class="profile-label">LinkedIn</span>
+                        <span class="profile-val" style="font-size:0.72rem;">${candidate.linkedin}</span>
+                    </div>` : ''}
+                    ${candidate.education ? `
+                    <div class="candidate-profile-row" style="align-items:flex-start;">
+                        <span class="profile-label" style="padding-top:4px;">Education</span>
+                        <span class="profile-val" style="display:flex;flex-wrap:wrap;gap:4px;">
+                            ${candidate.education.split(',').map(d => d.trim()).filter(Boolean).map(deg =>
+                                `<span style="background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.25);border-radius:4px;padding:2px 8px;font-size:0.72rem;font-weight:600;white-space:nowrap;">${deg}</span>`
+                            ).join('')}
+                        </span>
+                    </div>` : ''}
+
                     <div class="candidate-profile-row">
                         <span class="profile-label">Status</span>
                         <span class="profile-val" style="color: var(--primary);">${candidate.status}</span>
@@ -1176,7 +1736,7 @@ function renderScreeningReport(candidate) {
                                 <span class="prediction-badge success-high">Market Bound</span>
                             </div>
                             <div class="prediction-value-big" style="color:var(--success); background:none; -webkit-text-fill-color:initial; font-size:1.45rem;">
-                                ${candidate.predictions ? candidate.predictions.salary : '$130,000 - $145,000'}
+                                ${candidate.predictions ? candidate.predictions.salary : '₹8 LPA - ₹12 LPA'}
                             </div>
                             <span class="prediction-desc">AI suggested compensation range based on current skill value and job requirements.</span>
                         </div>
@@ -1938,42 +2498,74 @@ function renderAudit(container) {
     });
 }
 
-// --- Dedicated Login Page & Account Manager ---
+// ── Auth Tab Switcher (called from HTML onclick) ──────────────────────────────
+function switchAuthTab(tab) {
+    const signinForm = document.getElementById('signin-form');
+    const registerForm = document.getElementById('register-form');
+    const tabSignin = document.getElementById('tab-signin');
+    const tabRegister = document.getElementById('tab-register');
+    const title = document.getElementById('auth-modal-title');
+    const subtitle = document.getElementById('auth-modal-subtitle');
+
+    if (tab === 'signin') {
+        signinForm.style.display = 'block';
+        registerForm.style.display = 'none';
+        tabSignin.style.background = 'var(--primary)';
+        tabSignin.style.color = '#fff';
+        tabRegister.style.background = 'transparent';
+        tabRegister.style.color = 'var(--text-secondary)';
+        title.innerText = 'Welcome Back';
+        subtitle.innerText = 'Sign in to your TalentAI account to continue.';
+    } else {
+        signinForm.style.display = 'none';
+        registerForm.style.display = 'block';
+        tabRegister.style.background = 'var(--primary)';
+        tabRegister.style.color = '#fff';
+        tabSignin.style.background = 'transparent';
+        tabSignin.style.color = 'var(--text-secondary)';
+        title.innerText = 'Create Your Account';
+        subtitle.innerText = 'Register with your real email. Set a password just for TalentAI.';
+    }
+}
+
+// ── Core Auth Logic ───────────────────────────────────────────────────────────
 function initGmailAuth() {
     const loginPage = document.getElementById('login-page-container');
-    const customForm = document.getElementById('custom-login-form');
-    const profileBadge = document.getElementById('user-profile-badge');
+
+    // User DB stored in localStorage key 'talentai_users' (array of registered users)
+    const getUsers = () => JSON.parse(localStorage.getItem('talentai_users') || '[]');
+    const saveUsers = (users) => localStorage.setItem('talentai_users', JSON.stringify(users));
 
     const updateHeaderProfile = (user) => {
         const nameEl = document.getElementById('header-user-name');
         const roleEl = document.getElementById('header-user-role');
         const avatarEl = document.getElementById('header-avatar');
-
+        const roleTitles = {
+            recruiter: 'Lead Recruiter',
+            hiring_manager: 'Hiring Manager',
+            auditor: 'Compliance Reviewer',
+            org_admin: 'Organization Admin'
+        };
         if (nameEl) nameEl.innerText = user.displayName || user.email;
-        if (roleEl) {
-            const roleTitles = {
-                recruiter: 'Lead Recruiter',
-                hiring_manager: 'Hiring Manager',
-                auditor: 'Compliance Reviewer',
-                org_admin: 'Organization Admin'
-            };
-            roleEl.innerText = roleTitles[user.role] || 'Lead Recruiter';
-        }
-        if (avatarEl) avatarEl.innerText = user.initials || 'HR';
-
+        if (roleEl) roleEl.innerText = roleTitles[user.role] || 'Lead Recruiter';
+        if (avatarEl) avatarEl.innerText = user.initials || user.displayName.charAt(0).toUpperCase();
         const roleSwitch = document.getElementById('role-switcher');
         if (roleSwitch) roleSwitch.value = user.role;
     };
 
-    const loginUser = (userObj) => {
-        state.currentUser = userObj;
-        localStorage.setItem('talentai_user', JSON.stringify(userObj));
-        updateHeaderProfile(userObj);
+    const signInUser = (userObj) => {
+        // Remove password before storing in session
+        const sessionUser = { ...userObj };
+        delete sessionUser.password;
+        state.currentUser = sessionUser;
+        localStorage.setItem('talentai_user', JSON.stringify(sessionUser));
+        updateHeaderProfile(sessionUser);
         if (loginPage) loginPage.style.display = 'none';
-        showToast(`Signed in as ${userObj.displayName} (${userObj.email})`, 'success');
+        addAuditHistoryEntry('user:login', `Auth: ${sessionUser.email}`, `User signed in. Role: ${sessionUser.role}.`);
+        showToast(`Welcome back, ${sessionUser.displayName}!`, 'success');
     };
 
-    // Load saved session
+    // ── Restore existing session ──────────────────────────────────────────────
     const savedUser = localStorage.getItem('talentai_user');
     if (savedUser) {
         try {
@@ -1987,52 +2579,73 @@ function initGmailAuth() {
         if (loginPage) loginPage.style.display = 'flex';
     }
 
-    // Attach 1-Click Quick Account Cards Handlers
-    const accountCards = document.querySelectorAll('.account-card');
-    accountCards.forEach(card => {
-        card.addEventListener('click', () => {
-            const email = card.getAttribute('data-email');
-            const name = card.getAttribute('data-name');
-            const role = card.getAttribute('data-role');
-            const initials = card.getAttribute('data-initials');
-
-            loginUser({
-                email: email,
-                displayName: name,
-                role: role,
-                initials: initials
-            });
-        });
-    });
-
-    // Custom Form Submit
-    if (customForm) {
-        customForm.addEventListener('submit', (e) => {
+    // ── Sign In Form ──────────────────────────────────────────────────────────
+    const signinForm = document.getElementById('signin-form');
+    if (signinForm) {
+        signinForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const emailInput = document.getElementById('custom-email-input');
-            const roleSelect = document.getElementById('custom-role-select');
-            const email = emailInput ? emailInput.value.trim() : '';
-            const role = roleSelect ? roleSelect.value : 'recruiter';
+            const email = document.getElementById('signin-email').value.trim().toLowerCase();
+            const password = document.getElementById('signin-password').value;
+            const errEl = document.getElementById('signin-error');
 
-            if (!email) return;
+            const users = getUsers();
+            const match = users.find(u => u.email === email && u.password === password);
 
-            const namePart = email.split('@')[0].replace(/[._-]/g, ' ');
-            const displayName = namePart.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            const initials = namePart.split(' ').slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || 'HR';
-
-            loginUser({
-                email: email,
-                displayName: displayName,
-                initials: initials,
-                role: role
-            });
+            if (!match) {
+                errEl.style.display = 'block';
+                errEl.innerText = 'Incorrect email or password. Please try again or create an account.';
+                return;
+            }
+            errEl.style.display = 'none';
+            signInUser(match);
         });
     }
 
-    // Allow switching accounts by clicking topbar profile badge
+    // ── Register Form ─────────────────────────────────────────────────────────
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+        registerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('reg-name').value.trim();
+            const email = document.getElementById('reg-email').value.trim().toLowerCase();
+            const password = document.getElementById('reg-password').value;
+            const role = document.getElementById('reg-role').value;
+            const errEl = document.getElementById('register-error');
+
+            if (password.length < 6) {
+                errEl.style.display = 'block';
+                errEl.innerText = 'Password must be at least 6 characters.';
+                return;
+            }
+
+            const users = getUsers();
+            if (users.find(u => u.email === email)) {
+                errEl.style.display = 'block';
+                errEl.innerText = 'An account with this email already exists. Please sign in.';
+                return;
+            }
+
+            const initials = name.split(' ').slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('');
+            const newUser = { email, password, displayName: name, initials, role, createdAt: new Date().toISOString() };
+            users.push(newUser);
+            saveUsers(users);
+
+            errEl.style.display = 'none';
+            signInUser(newUser);
+            showToast(`Account created! Welcome, ${name}!`, 'success');
+        });
+    }
+
+    // ── Topbar profile badge → Sign Out menu ─────────────────────────────────
+    const profileBadge = document.getElementById('user-profile-badge');
     if (profileBadge) {
         profileBadge.addEventListener('click', () => {
-            if (loginPage) loginPage.style.display = 'flex';
+            if (confirm(`Sign out of TalentAI?\n\nSigned in as: ${state.currentUser ? state.currentUser.email : ''}`)) {
+                localStorage.removeItem('talentai_user');
+                state.currentUser = null;
+                if (loginPage) loginPage.style.display = 'flex';
+                showToast('Signed out successfully.', 'info');
+            }
         });
     }
 }

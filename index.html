@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <!-- PDF.js for real resume PDF parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -133,9 +135,11 @@
         </main>
     </div>
 
-    <!-- Dedicated Login Page View overlay -->
+    <!-- Auth Portal Overlay -->
     <div id="login-page-container" class="login-page-container" style="display: flex;">
         <div class="glass-card login-card">
+
+            <!-- Logo -->
             <div class="login-header">
                 <div class="app-logo" style="justify-content: center; margin-bottom: 12px;">
                     <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--primary)" stroke-width="2">
@@ -145,86 +149,71 @@
                     </svg>
                     <span style="font-size: 1.5rem; font-weight: 800; background: linear-gradient(135deg, #fff 0%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">TalentAI Enterprise</span>
                 </div>
-                <h2>Enterprise Recruitment Portal</h2>
-                <p>Select a pre-configured recruiter account below for instant 1-click login, or sign in with your official Gmail address.</p>
+                <h2 id="auth-modal-title">Welcome Back</h2>
+                <p id="auth-modal-subtitle">Sign in to your TalentAI account to continue.</p>
             </div>
 
-            <!-- Quick Accounts 1-Click Selector Grid -->
-            <div style="margin-bottom: 20px;">
-                <span class="section-label">Pre-Configured Enterprise Accounts:</span>
-                <div class="account-cards-grid">
-                    <div class="account-card" data-email="sarah.recruiter@gmail.com" data-name="Sarah Jenkins" data-role="recruiter" data-initials="SJ">
-                        <div class="account-card-avatar">SJ</div>
-                        <div class="account-card-info">
-                            <span class="account-card-name">Sarah Jenkins</span>
-                            <span class="account-card-email">sarah.recruiter@gmail.com</span>
-                            <span class="account-card-role">Lead Recruiter</span>
-                        </div>
-                    </div>
-
-                    <div class="account-card" data-email="david.hm@gmail.com" data-name="David Miller" data-role="hiring_manager" data-initials="DM">
-                        <div class="account-card-avatar" style="background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);">DM</div>
-                        <div class="account-card-info">
-                            <span class="account-card-name">David Miller</span>
-                            <span class="account-card-email">david.hm@gmail.com</span>
-                            <span class="account-card-role">Hiring Manager</span>
-                        </div>
-                    </div>
-
-                    <div class="account-card" data-email="elena.auditor@gmail.com" data-name="Elena Rostova" data-role="auditor" data-initials="ER">
-                        <div class="account-card-avatar" style="background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);">ER</div>
-                        <div class="account-card-info">
-                            <span class="account-card-name">Elena Rostova</span>
-                            <span class="account-card-email">elena.auditor@gmail.com</span>
-                            <span class="account-card-role">Compliance Auditor</span>
-                        </div>
-                    </div>
-
-                    <div class="account-card" data-email="alex.admin@acme-corp.com" data-name="Alex Rivera" data-role="org_admin" data-initials="AR">
-                        <div class="account-card-avatar" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">AR</div>
-                        <div class="account-card-info">
-                            <span class="account-card-name">Alex Rivera</span>
-                            <span class="account-card-email">alex.admin@acme-corp.com</span>
-                            <span class="account-card-role">Organization Admin</span>
-                        </div>
-                    </div>
-                </div>
+            <!-- Tab Toggle -->
+            <div style="display:flex; gap:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:24px;">
+                <button id="tab-signin" onclick="switchAuthTab('signin')" style="flex:1; padding:10px; border:none; background:var(--primary); color:#fff; font-weight:700; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">Sign In</button>
+                <button id="tab-register" onclick="switchAuthTab('register')" style="flex:1; padding:10px; border:none; background:transparent; color:var(--text-secondary); font-weight:600; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">Create Account</button>
             </div>
 
-            <div class="divider-line"><span>OR SIGN IN WITH CUSTOM GMAIL ID</span></div>
-
-            <!-- Custom Gmail Login Form -->
-            <form id="custom-login-form" style="display: flex; flex-direction: column; gap: 14px;">
-                <div style="text-align: left;">
-                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: block;">Gmail / Corporate Email</label>
-                    <input type="email" id="custom-email-input" class="select-filter" placeholder="e.g. your.name@gmail.com" required style="width: 100%; padding: 10px 14px; font-size: 0.875rem;" />
+            <!-- SIGN IN FORM -->
+            <form id="signin-form" autocomplete="off">
+                <div class="form-field-group" style="margin-bottom:14px;">
+                    <label class="form-label">Your Email Address</label>
+                    <input type="email" id="signin-email" class="form-input" placeholder="you@example.com" required autocomplete="email">
                 </div>
+                <div class="form-field-group" style="margin-bottom:6px;">
+                    <label class="form-label">Your TalentAI Password</label>
+                    <input type="password" id="signin-password" class="form-input" placeholder="Enter your password" required autocomplete="current-password">
+                </div>
+                <p id="signin-error" style="color:#f87171; font-size:0.78rem; margin:8px 0 12px; display:none;"></p>
+                <button type="submit" class="btn-primary" style="width:100%; justify-content:center; padding:13px;">
+                    Sign In to TalentAI
+                </button>
+                <p style="text-align:center; margin-top:14px; font-size:0.78rem; color:var(--text-muted);">
+                    Don't have an account? <span onclick="switchAuthTab('register')" style="color:var(--primary); cursor:pointer; font-weight:600;">Create one free →</span>
+                </p>
+            </form>
 
-                <div style="text-align: left;">
-                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: block;">Assigned Hiring Role</label>
-                    <select id="custom-role-select" class="select-filter" style="width: 100%; padding: 10px 14px; font-size: 0.875rem;">
+            <!-- REGISTER FORM (hidden by default) -->
+            <form id="register-form" style="display:none;" autocomplete="off">
+                <div class="form-field-group" style="margin-bottom:14px;">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" id="reg-name" class="form-input" placeholder="e.g. Priya Sharma" required>
+                </div>
+                <div class="form-field-group" style="margin-bottom:14px;">
+                    <label class="form-label">Your Real Email Address</label>
+                    <input type="email" id="reg-email" class="form-input" placeholder="priya@gmail.com" required autocomplete="email">
+                </div>
+                <div class="form-field-group" style="margin-bottom:14px;">
+                    <label class="form-label">Choose a Password (for this site only)</label>
+                    <input type="password" id="reg-password" class="form-input" placeholder="Min 6 characters" required autocomplete="new-password">
+                </div>
+                <div class="form-field-group" style="margin-bottom:14px;">
+                    <label class="form-label">Your Role</label>
+                    <select id="reg-role" class="form-input select-filter" style="width:100%;">
                         <option value="recruiter">Lead Recruiter</option>
                         <option value="hiring_manager">Hiring Manager</option>
                         <option value="auditor">Compliance Reviewer</option>
                         <option value="org_admin">Organization Admin</option>
                     </select>
                 </div>
-
-                <button type="submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 0.9rem; margin-top: 6px; font-weight: 600;">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                        <polyline points="10 17 15 12 10 7"/>
-                        <line x1="15" y1="12" x2="3" y2="12"/>
-                    </svg>
-                    Sign In with Email
+                <p id="register-error" style="color:#f87171; font-size:0.78rem; margin:8px 0 12px; display:none;"></p>
+                <button type="submit" class="btn-primary" style="width:100%; justify-content:center; padding:13px;">
+                    Create My Account
                 </button>
+                <p style="text-align:center; margin-top:14px; font-size:0.78rem; color:var(--text-muted);">
+                    Already have an account? <span onclick="switchAuthTab('signin')" style="color:var(--primary); cursor:pointer; font-weight:600;">Sign in →</span>
+                </p>
             </form>
+
         </div>
     </div>
-
-    <!-- Notification Toast Container -->
-    <div id="toast-container" class="toast-container"></div>
 
     <script src="app.js"></script>
 </body>
 </html>
+
