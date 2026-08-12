@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
-from backend.app.api.v1 import jobs, candidates, matching, audit, analytics
+from backend.app.api.v1 import jobs, candidates, matching, audit, analytics, ml
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
