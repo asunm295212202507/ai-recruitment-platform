@@ -3,12 +3,32 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from backend.app.config import settings
 
+import os
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+db_url = settings.DATABASE_URL
+# Convert standard PostgreSQL URI to asyncpg-specific URI
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Configure connection pool arguments based on database dialect
+connect_args = {}
+engine_kwargs = {"future": True, "echo": False}
+
+if "sqlite" in db_url:
+    # SQLite fallback
+    if db_url.startswith("sqlite://"):
+        db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+    connect_args["check_same_thread"] = False
+else:
+    # PostgreSQL configuration
+    engine_kwargs["pool_size"] = 20
+    engine_kwargs["max_overflow"] = 10
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=False,
-    future=True,
-    pool_size=20,
-    max_overflow=10
+    db_url,
+    connect_args=connect_args,
+    **engine_kwargs
 )
 
 AsyncSessionLocal = sessionmaker(
@@ -18,6 +38,7 @@ AsyncSessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False
 )
+
 
 Base = declarative_base()
 

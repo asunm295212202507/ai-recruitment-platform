@@ -2529,12 +2529,30 @@ function switchAuthTab(tab) {
 }
 
 // ── Core Auth Logic ───────────────────────────────────────────────────────────
+const getBackendUrl = () => {
+    // If running on localhost
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:8000';
+    }
+    // Check if the user specified a custom backend URL in localStorage
+    const customUrl = localStorage.getItem('talentai_backend_url');
+    if (customUrl) return customUrl;
+
+    // Infer from frontend URL by replacing "frontend" with "backend" or "platform" with "backend"
+    const currentOrigin = window.location.origin;
+    if (currentOrigin.includes('frontend')) {
+        return currentOrigin.replace('frontend', 'backend');
+    }
+    if (currentOrigin.includes('platform')) {
+        return currentOrigin.replace('platform', 'backend');
+    }
+    
+    // Default fallback
+    return 'https://ai-recruitment-backend.onrender.com';
+};
+
 function initGmailAuth() {
     const loginPage = document.getElementById('login-page-container');
-
-    // User DB stored in localStorage key 'talentai_users' (array of registered users)
-    const getUsers = () => JSON.parse(localStorage.getItem('talentai_users') || '[]');
-    const saveUsers = (users) => localStorage.setItem('talentai_users', JSON.stringify(users));
 
     const updateHeaderProfile = (user) => {
         const nameEl = document.getElementById('header-user-name');
@@ -2548,30 +2566,43 @@ function initGmailAuth() {
         };
         if (nameEl) nameEl.innerText = user.displayName || user.email;
         if (roleEl) roleEl.innerText = roleTitles[user.role] || 'Lead Recruiter';
-        if (avatarEl) avatarEl.innerText = user.initials || user.displayName.charAt(0).toUpperCase();
+        if (avatarEl) avatarEl.innerText = user.initials || (user.displayName ? user.displayName.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase());
         const roleSwitch = document.getElementById('role-switcher');
         if (roleSwitch) roleSwitch.value = user.role;
     };
 
     const signInUser = (userObj) => {
-        // Remove password before storing in session
-        const sessionUser = { ...userObj };
-        delete sessionUser.password;
-        state.currentUser = sessionUser;
-        localStorage.setItem('talentai_user', JSON.stringify(sessionUser));
-        updateHeaderProfile(sessionUser);
+        state.currentUser = userObj;
+        localStorage.setItem('talentai_user', JSON.stringify(userObj));
+        updateHeaderProfile(userObj);
         if (loginPage) loginPage.style.display = 'none';
-        addAuditHistoryEntry('user:login', `Auth: ${sessionUser.email}`, `User signed in. Role: ${sessionUser.role}.`);
-        showToast(`Welcome back, ${sessionUser.displayName}!`, 'success');
+        addAuditHistoryEntry('user:login', `Auth: ${userObj.email}`, `User signed in. Role: ${userObj.role}.`);
+        showToast(`Welcome back, ${userObj.displayName || userObj.email}!`, 'success');
     };
 
-    // ── Restore existing session ──────────────────────────────────────────────
-    const savedUser = localStorage.getItem('talentai_user');
-    if (savedUser) {
+    // ── Restore existing session and validate with backend ─────────────────────
+    const savedUserStr = localStorage.getItem('talentai_user');
+    if (savedUserStr) {
         try {
-            state.currentUser = JSON.parse(savedUser);
-            updateHeaderProfile(state.currentUser);
+            const user = JSON.parse(savedUserStr);
+            state.currentUser = user;
+            updateHeaderProfile(user);
             if (loginPage) loginPage.style.display = 'none';
+
+            // Validate token in background
+            fetch(`${getBackendUrl()}/api/v1/auth/me`, {
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            }).then(res => {
+                if (!res.ok) {
+                    // Token is invalid/expired
+                    localStorage.removeItem('talentai_user');
+                    state.currentUser = null;
+                    if (loginPage) loginPage.style.display = 'flex';
+                    showToast('Session expired. Please sign in again.', 'warning');
+                }
+            }).catch(err => {
+                console.log('Backend connection failed, keeping offline session active:', err);
+            });
         } catch (e) {
             if (loginPage) loginPage.style.display = 'flex';
         }
@@ -2582,35 +2613,51 @@ function initGmailAuth() {
     // ── Sign In Form ──────────────────────────────────────────────────────────
     const signinForm = document.getElementById('signin-form');
     if (signinForm) {
-        signinForm.addEventListener('submit', (e) => {
+        signinForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('signin-email').value.trim().toLowerCase();
             const password = document.getElementById('signin-password').value;
             const errEl = document.getElementById('signin-error');
+            const submitBtn = signinForm.querySelector('button[type="submit"]');
 
-            const users = getUsers();
-            const match = users.find(u => u.email === email && u.password === password);
-
-            if (!match) {
-                errEl.style.display = 'block';
-                errEl.innerText = 'Incorrect email or password. Please try again or create an account.';
-                return;
-            }
             errEl.style.display = 'none';
-            signInUser(match);
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'Signing in...';
+
+            try {
+                const response = await fetch(`${getBackendUrl()}/api/v1/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to sign in. Please check your credentials.');
+                }
+                
+                signInUser(data);
+            } catch (err) {
+                errEl.style.display = 'block';
+                errEl.innerText = err.message || 'Unable to connect to authentication server.';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Sign In to TalentAI';
+            }
         });
     }
 
     // ── Register Form ─────────────────────────────────────────────────────────
     const registerForm = document.getElementById('register-form');
     if (registerForm) {
-        registerForm.addEventListener('submit', (e) => {
+        registerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const name = document.getElementById('reg-name').value.trim();
             const email = document.getElementById('reg-email').value.trim().toLowerCase();
             const password = document.getElementById('reg-password').value;
             const role = document.getElementById('reg-role').value;
             const errEl = document.getElementById('register-error');
+            const submitBtn = registerForm.querySelector('button[type="submit"]');
 
             if (password.length < 6) {
                 errEl.style.display = 'block';
@@ -2618,23 +2665,34 @@ function initGmailAuth() {
                 return;
             }
 
-            const users = getUsers();
-            if (users.find(u => u.email === email)) {
-                errEl.style.display = 'block';
-                errEl.innerText = 'An account with this email already exists. Please sign in.';
-                return;
-            }
-
-            const initials = name.split(' ').slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('');
-            const newUser = { email, password, displayName: name, initials, role, createdAt: new Date().toISOString() };
-            users.push(newUser);
-            saveUsers(users);
-
             errEl.style.display = 'none';
-            signInUser(newUser);
-            showToast(`Account created! Welcome, ${name}!`, 'success');
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'Creating account...';
+
+            try {
+                const response = await fetch(`${getBackendUrl()}/api/v1/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password, role })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Registration failed.');
+                }
+
+                signInUser(data);
+                showToast(`Account created! Welcome, ${name}!`, 'success');
+            } catch (err) {
+                errEl.style.display = 'block';
+                errEl.innerText = err.message || 'Unable to connect to registration server.';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Create My Account';
+            }
         });
     }
+
 
     // ── Topbar profile badge → Sign Out menu ─────────────────────────────────
     const profileBadge = document.getElementById('user-profile-badge');

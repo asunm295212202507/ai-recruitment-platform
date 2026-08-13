@@ -21,7 +21,11 @@ RUN pip install --no-cache-dir \
     pydantic-settings \
     python-jose[cryptography] \
     passlib[bcrypt] \
-    python-multipart
+    python-multipart \
+    scikit-learn \
+    pandas \
+    joblib
+
 
 # Copy backend application source code
 COPY backend/ /app/backend/
