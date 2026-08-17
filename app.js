@@ -1814,7 +1814,7 @@ function renderScreeningReport(candidate) {
 
             const token = state.currentUser ? state.currentUser.token : null;
             const headers = { 'Content-Type': 'application/json' };
-            if (token) {
+            if (token && !token.startsWith('local-')) {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
@@ -1828,7 +1828,7 @@ function renderScreeningReport(candidate) {
                     })
                 });
 
-                if (!response.ok && response.status !== 401) {
+                if (!response.ok) {
                     const errData = await response.json().catch(() => ({}));
                     console.warn('Backend shortlist notification warning:', errData);
                 }
@@ -1838,6 +1838,10 @@ function renderScreeningReport(candidate) {
 
             // 1. Update candidate data status
             candidate.status = 'Shortlisted';
+            if (state.candidates && state.candidates.length > 0) {
+                const stateCand = state.candidates.find(c => (c.id && c.id === candidate.id) || (c.email && c.email === candidate.email));
+                if (stateCand) stateCand.status = 'Shortlisted';
+            }
 
             // 2. Update UI profile card status display
             const statusEl = document.getElementById('profile-candidate-status');
