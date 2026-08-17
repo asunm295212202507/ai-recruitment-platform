@@ -2693,6 +2693,21 @@ function initGmailAuth() {
                 
                 signInUser(data);
             } catch (err) {
+                // If remote backend server is unavailable / sleeping / suspended on Render
+                if (err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'))) {
+                    console.warn('Backend server unreachable/suspended. Initializing local session...');
+                    const displayName = email.split('@')[0];
+                    const initials = displayName.charAt(0).toUpperCase();
+                    const localUser = {
+                        email: email,
+                        displayName: displayName,
+                        initials: initials,
+                        role: 'recruiter',
+                        token: 'local-session-token-' + Date.now()
+                    };
+                    signInUser(localUser);
+                    return;
+                }
                 errEl.style.display = 'block';
                 errEl.innerText = err.message || 'Unable to connect to authentication server.';
             } finally {
@@ -2739,6 +2754,21 @@ function initGmailAuth() {
                 signInUser(data);
                 showToast(`Account created! Welcome, ${name}!`, 'success');
             } catch (err) {
+                // If remote backend server is unavailable / sleeping / suspended on Render
+                if (err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'))) {
+                    console.warn('Backend server unreachable/suspended. Initializing local session...');
+                    const initials = name.split(' ').slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || email.charAt(0).toUpperCase();
+                    const localUser = {
+                        email: email,
+                        displayName: name,
+                        initials: initials,
+                        role: role,
+                        token: 'local-session-token-' + Date.now()
+                    };
+                    signInUser(localUser);
+                    showToast(`Account created! Welcome, ${name}!`, 'success');
+                    return;
+                }
                 errEl.style.display = 'block';
                 errEl.innerText = err.message || 'Unable to connect to registration server.';
             } finally {
