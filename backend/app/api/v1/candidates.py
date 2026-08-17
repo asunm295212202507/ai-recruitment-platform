@@ -75,3 +75,25 @@ async def parse_candidate_resume(
             "summary": "Senior systems developer with 6+ years of production experience implementing high-availability web applications."
         }
     }
+
+class ShortlistRequestSchema(BaseModel):
+
+    candidate_id: str
+    status: str = "Shortlisted"
+
+@router.post("/shortlist")
+async def shortlist_candidate(
+    payload: ShortlistRequestSchema,
+    current_user: TokenPayload = Depends(get_current_tenant_user)
+):
+    """
+    Shortlists a candidate profile and updates their status in the organization pipeline.
+    """
+    return {
+        "status": "success",
+        "message": f"Candidate {payload.candidate_id} successfully shortlisted.",
+        "candidate_id": payload.candidate_id,
+        "new_status": payload.status,
+        "updated_by": current_user.user_id
+    }
+

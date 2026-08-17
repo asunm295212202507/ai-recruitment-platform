@@ -6,9 +6,12 @@ from backend.app.config import settings
 import os
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-db_url = settings.DATABASE_URL
-# Convert standard PostgreSQL URI to asyncpg-specific URI
-if db_url.startswith("postgresql://"):
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    # Fallback to local SQLite database if no DATABASE_URL environment variable is provided
+    db_url = "sqlite+aiosqlite:///./talentai.db"
+elif db_url.startswith("postgresql://"):
+    # Convert standard PostgreSQL URI to asyncpg-specific URI
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Configure connection pool arguments based on database dialect
@@ -24,6 +27,7 @@ else:
     # PostgreSQL configuration
     engine_kwargs["pool_size"] = 20
     engine_kwargs["max_overflow"] = 10
+
 
 engine = create_async_engine(
     db_url,

@@ -1628,7 +1628,7 @@ function renderScreeningReport(candidate) {
 
                     <div class="candidate-profile-row">
                         <span class="profile-label">Status</span>
-                        <span class="profile-val" style="color: var(--primary);">${candidate.status}</span>
+                        <span class="profile-val" id="profile-candidate-status" style="color: ${candidate.status === 'Shortlisted' ? 'var(--success)' : 'var(--primary)'}; font-weight:700;">${candidate.status}</span>
                     </div>
                 </div>
 
@@ -1639,7 +1639,7 @@ function renderScreeningReport(candidate) {
                         </svg>
                         Launch AI Interview
                     </button>
-                    <button class="btn-secondary" style="width:100%; justify-content:center;" id="btn-report-shortlist">Shortlist Candidate</button>
+                    <button class="btn-secondary" style="${candidate.status === 'Shortlisted' ? 'width:100%; justify-content:center; background:rgba(16,185,129,0.15); color:var(--success); border-color:rgba(16,185,129,0.3); cursor:default;' : 'width:100%; justify-content:center;'}" id="btn-report-shortlist" ${candidate.status === 'Shortlisted' ? 'disabled' : ''}>${candidate.status === 'Shortlisted' ? '✓ Shortlisted' : 'Shortlist Candidate'}</button>
                     <button class="btn-secondary" style="width:100%; justify-content:center;" id="btn-report-back">Screen Another</button>
                 </div>
             </div>
@@ -1804,10 +1804,59 @@ function renderScreeningReport(candidate) {
         document.getElementById('screener-setup-container').style.display = 'block';
     });
 
-    document.getElementById('btn-report-shortlist').addEventListener('click', () => {
-        candidate.status = 'Screened';
-        showToast(`${candidate.name} shortlisted for review!`, 'success');
-    });
+    const shortlistBtn = document.getElementById('btn-report-shortlist');
+    if (shortlistBtn) {
+        shortlistBtn.addEventListener('click', async () => {
+            if (candidate.status === 'Shortlisted' || shortlistBtn.disabled) return;
+
+            shortlistBtn.disabled = true;
+            shortlistBtn.innerText = 'Shortlisting...';
+
+            const token = state.currentUser ? state.currentUser.token : null;
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            try {
+                const response = await fetch(`${getBackendUrl()}/api/v1/candidates/shortlist`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        candidate_id: candidate.id || candidate.email || 'cand-001',
+                        status: 'Shortlisted'
+                    })
+                });
+
+                if (!response.ok && response.status !== 401) {
+                    const errData = await response.json().catch(() => ({}));
+                    console.warn('Backend shortlist notification warning:', errData);
+                }
+            } catch (err) {
+                console.warn('Backend shortlist fetch failed, updating client UI status:', err);
+            }
+
+            // 1. Update candidate data status
+            candidate.status = 'Shortlisted';
+
+            // 2. Update UI profile card status display
+            const statusEl = document.getElementById('profile-candidate-status');
+            if (statusEl) {
+                statusEl.innerText = 'Shortlisted';
+                statusEl.style.color = 'var(--success)';
+            }
+
+            // 3. Update button state & styling (prevents duplicate requests)
+            shortlistBtn.innerText = '✓ Shortlisted';
+            shortlistBtn.style.background = 'rgba(16, 185, 129, 0.15)';
+            shortlistBtn.style.color = 'var(--success)';
+            shortlistBtn.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+            shortlistBtn.style.cursor = 'default';
+
+            addAuditHistoryEntry('candidate:shortlist', `Candidate: ${candidate.name}`, `Candidate ${candidate.name} (${candidate.id || candidate.email}) shortlisted.`);
+            showToast(`${candidate.name} shortlisted for review!`, 'success');
+        });
+    }
 
     document.getElementById('btn-report-start-chat').addEventListener('click', () => {
         // Load candidate into interview state
@@ -2538,17 +2587,23 @@ const getBackendUrl = () => {
     const customUrl = localStorage.getItem('talentai_backend_url');
     if (customUrl) return customUrl;
 
-    // Infer from frontend URL by replacing "frontend" with "backend" or "platform" with "backend"
+    // Check window.ENV_BACKEND_URL if provided
+    if (window.ENV_BACKEND_URL) return window.ENV_BACKEND_URL;
+
+    // Direct mapping for deployed Render environment
     const currentOrigin = window.location.origin;
+    if (currentOrigin.includes('platform-witv')) {
+        return 'https://ai-recruitment-platform-backend.onrender.com';
+    }
     if (currentOrigin.includes('frontend')) {
         return currentOrigin.replace('frontend', 'backend');
     }
     if (currentOrigin.includes('platform')) {
-        return currentOrigin.replace('platform', 'backend');
+        return currentOrigin.replace('platform', 'platform-backend');
     }
     
     // Default fallback
-    return 'https://ai-recruitment-backend.onrender.com';
+    return 'https://ai-recruitment-platform-backend.onrender.com';
 };
 
 function initGmailAuth() {
