@@ -2002,7 +2002,13 @@ function renderScreeningReport(candidate) {
                 statusEl.style.display = 'block';
                 statusEl.style.background = 'rgba(239,68,68,0.1)';
                 statusEl.style.color = '#f87171';
-                statusEl.innerText = err.message || 'Email delivery failed. You can use "Copy Direct Link" above to send the link directly to the candidate.';
+                
+                if (err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'))) {
+                    statusEl.innerText = 'Backend server is currently suspended/offline on Render. Please click "Copy Direct Link" above to send the link directly to the candidate!';
+                } else {
+                    statusEl.innerText = err.message || 'Email delivery failed. You can use "Copy Direct Link" above to send the link directly to the candidate.';
+                }
+                
                 sendBtn.disabled = false;
                 sendBtn.innerHTML = `
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
