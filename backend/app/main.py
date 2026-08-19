@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
-from backend.app.api.v1 import jobs, candidates, matching, audit, analytics, ml, auth
+from backend.app.api.v1 import jobs, candidates, matching, audit, analytics, ml, auth, interviews
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -39,6 +39,7 @@ app.include_router(matching.router, prefix=f"{settings.API_V1_STR}/matching", ta
 app.include_router(audit.router, prefix=f"{settings.API_V1_STR}/audit", tags=["Governance & Audit Logs"])
 app.include_router(analytics.router, prefix=f"{settings.API_V1_STR}/analytics", tags=["Recruiter Analytics"])
 app.include_router(ml.router, prefix=f"{settings.API_V1_STR}/ml", tags=["ML Model Training & Pipelines"])
+app.include_router(interviews.router, prefix=f"{settings.API_V1_STR}/interviews", tags=["Interview Invitations"])
 
 @app.get("/")
 async def root_health_check():

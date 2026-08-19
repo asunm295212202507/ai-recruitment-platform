@@ -172,11 +172,45 @@ const mockResumeDatabase = {
 document.addEventListener('DOMContentLoaded', () => {
     initRouter();
     registerGlobalEvents();
-    
-    // Initial Load - default to dashboard
-    const hash = window.location.hash.substring(1) || 'dashboard';
-    navigateToView(hash);
+
+    // ── Candidate Deep-Link Handler ────────────────────────────────────────────
+    // When a candidate opens the interview invite email link, the URL looks like:
+    // https://your-app.onrender.com/#interview?token=XXX&candidate=ID&name=Name&role=Role
+    // We detect this and load them directly into the Interview Simulator.
+    const rawHash = window.location.hash.substring(1);  // e.g. "interview?token=...&candidate=..."
+    const qIdx = rawHash.indexOf('?');
+    const viewFromHash = qIdx === -1 ? rawHash : rawHash.substring(0, qIdx);
+    const queryStr = qIdx === -1 ? '' : rawHash.substring(qIdx + 1);
+    const params = new URLSearchParams(queryStr);
+
+    if (viewFromHash === 'interview' && params.get('token') && params.get('candidate')) {
+        // This is a candidate accessing via their email invite link
+        const candidateName = decodeURIComponent(params.get('name') || 'Candidate').replace(/\+/g, ' ');
+        const candidateId   = params.get('candidate');
+        const roleApplied   = decodeURIComponent(params.get('role') || 'Open Role').replace(/\+/g, ' ');
+
+        // Pre-load candidate profile into interview state
+        state.activeInterview.candidateId   = candidateId;
+        state.activeInterview.candidateName = candidateName;
+        state.activeInterview.jobId         = roleApplied;
+        state.activeInterview.stage         = 0;
+        state.activeInterview.chatHistory   = [];
+        state.activeInterview.metrics       = { communication: 0, technical: 0, sentiment: 0 };
+        state.activeInterview.skillsUnlocked = [];
+
+        // Hide login overlay — candidate doesn't need an account
+        const loginPage = document.getElementById('login-page-container');
+        if (loginPage) loginPage.style.display = 'none';
+
+        // Navigate directly to interview view
+        navigateToView('interview');
+    } else {
+        // Normal HR user load
+        const hash = viewFromHash || 'dashboard';
+        navigateToView(hash);
+    }
 });
+
 
 function initRouter() {
     // Navigation link clicks
@@ -1863,17 +1897,121 @@ function renderScreeningReport(candidate) {
     }
 
     document.getElementById('btn-report-start-chat').addEventListener('click', () => {
-        // Load candidate into interview state
-        state.activeInterview.candidateId = candidate.id;
-        state.activeInterview.candidateName = candidate.name;
-        state.activeInterview.jobId = candidate.jobId;
-        state.activeInterview.stage = 0;
-        state.activeInterview.chatHistory = [];
-        state.activeInterview.metrics = { communication: 0, technical: 0, sentiment: 0 };
-        state.activeInterview.skillsUnlocked = [];
-        
-        window.location.hash = 'interview';
-        navigateToView('interview');
+        // Open the interview invite confirmation modal
+        const overlay  = document.getElementById('invite-modal-overlay');
+        const sendBtn  = document.getElementById('invite-modal-send');
+        const cancelBtn = document.getElementById('invite-modal-cancel');
+        const statusEl = document.getElementById('invite-modal-status');
+
+        // Populate candidate info in the modal
+        document.getElementById('invite-cand-name').innerText  = candidate.name || 'Unknown Candidate';
+        document.getElementById('invite-cand-email').innerText = candidate.email || 'No email on file';
+        document.getElementById('invite-cand-role').innerText  = candidate.classification || 'Candidate';
+
+        statusEl.style.display = 'none';
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Send Interview Link via Email`;
+
+        overlay.style.display = 'flex';
+
+        // Cancel button closes modal
+        cancelBtn.onclick = () => { overlay.style.display = 'none'; };
+
+        // Send button dispatches invite to backend
+        sendBtn.onclick = async () => {
+            if (!candidate.email) {
+                statusEl.style.display = 'block';
+                statusEl.style.background = 'rgba(239,68,68,0.1)';
+                statusEl.style.color = '#f87171';
+                statusEl.innerText = 'No email address found for this candidate. Please ensure the resume contains an email.';
+                return;
+            }
+
+            sendBtn.disabled = true;
+            sendBtn.innerText = 'Sending...';
+            statusEl.style.display = 'none';
+
+            try {
+                const token = state.currentUser ? state.currentUser.token : null;
+                const headers = { 'Content-Type': 'application/json' };
+                if (token && !token.startsWith('local-')) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+
+                const res = await fetch(`${getBackendUrl()}/api/v1/interviews/send-invite`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        candidate_name: candidate.name || 'Candidate',
+                        candidate_email: candidate.email,
+                        candidate_id: candidate.id || candidate.email,
+                        job_title: candidate.classification || 'Open Role',
+                        company_name: 'TalentAI Enterprise',
+                        recruiter_name: state.currentUser ? state.currentUser.displayName : 'Hiring Team'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Failed to send invitation.');
+                }
+
+                // Success state
+                statusEl.style.display = 'block';
+                statusEl.style.background = 'rgba(16,185,129,0.1)';
+                statusEl.style.color = '#10b981';
+                statusEl.innerText = `✓ Invitation sent to ${candidate.email}! The candidate will receive the link shortly.`;
+                sendBtn.innerText = '✓ Invitation Sent';
+                sendBtn.style.background = 'rgba(16,185,129,0.2)';
+                sendBtn.style.color = '#10b981';
+
+                addAuditHistoryEntry('interview:invite_sent', `Candidate: ${candidate.name}`, `Interview invitation email sent to ${candidate.email}.`);
+                showToast(`Interview invitation sent to ${candidate.email}!`, 'success');
+
+                // Also load candidate into interview state for HR to preview
+                state.activeInterview.candidateId   = candidate.id;
+                state.activeInterview.candidateName = candidate.name;
+                state.activeInterview.jobId         = candidate.jobId;
+                state.activeInterview.stage         = 0;
+                state.activeInterview.chatHistory   = [];
+                state.activeInterview.metrics       = { communication: 0, technical: 0, sentiment: 0 };
+                state.activeInterview.skillsUnlocked = [];
+
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    window.location.hash = 'interview';
+                    navigateToView('interview');
+                }, 1800);
+
+            } catch (err) {
+                // If backend is offline, open interview simulator directly (preview mode)
+                if (err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'))) {
+                    overlay.style.display = 'none';
+                    state.activeInterview.candidateId   = candidate.id;
+                    state.activeInterview.candidateName = candidate.name;
+                    state.activeInterview.jobId         = candidate.jobId;
+                    state.activeInterview.stage         = 0;
+                    state.activeInterview.chatHistory   = [];
+                    state.activeInterview.metrics       = { communication: 0, technical: 0, sentiment: 0 };
+                    state.activeInterview.skillsUnlocked = [];
+                    showToast('Email server offline — opening simulator in preview mode.', 'warning');
+                    window.location.hash = 'interview';
+                    navigateToView('interview');
+                    return;
+                }
+                statusEl.style.display = 'block';
+                statusEl.style.background = 'rgba(239,68,68,0.1)';
+                statusEl.style.color = '#f87171';
+                statusEl.innerText = err.message || 'Failed to send invitation. Please check your SMTP_EMAIL and SMTP_APP_PASSWORD environment variables on Render.';
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    Retry Send`;
+            }
+        };
     });
 }
 
