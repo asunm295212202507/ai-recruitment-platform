@@ -233,14 +233,20 @@
                 <div id="invite-cand-role" style="color:#a5b4fc; font-size:0.82rem; margin-top:4px; font-weight:600;"></div>
             </div>
             <p id="invite-modal-status" style="display:none; font-size:0.85rem; border-radius:8px; padding:10px 14px; margin-bottom:16px;"></p>
-            <div style="display:flex; gap:10px;">
-                <button id="invite-modal-cancel" class="btn-secondary" style="flex:1; justify-content:center;">Cancel</button>
-                <button id="invite-modal-send" class="btn-primary" style="flex:2; justify-content:center;">
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; gap:10px;">
+                    <button id="invite-modal-cancel" class="btn-secondary" style="flex:1; justify-content:center;">Cancel</button>
+                    <button id="invite-modal-copy" class="btn-secondary" style="flex:1.5; justify-content:center; border-color:var(--primary); color:#a5b4fc;">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copy Direct Link
+                    </button>
+                </div>
+                <button id="invite-modal-send" class="btn-primary" style="width:100%; justify-content:center;">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     Send Interview Link via Email
                 </button>
             </div>
-            <p style="color:#475569; font-size:0.76rem; text-align:center; margin:14px 0 0;">The candidate will receive a direct link to the AI interview simulator.</p>
+            <p style="color:#475569; font-size:0.76rem; text-align:center; margin:14px 0 0;">The candidate can use either the email link or direct link to enter the AI interview.</p>
         </div>
     </div>
 

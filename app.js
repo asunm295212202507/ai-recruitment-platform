@@ -1898,10 +1898,11 @@ function renderScreeningReport(candidate) {
 
     document.getElementById('btn-report-start-chat').addEventListener('click', () => {
         // Open the interview invite confirmation modal
-        const overlay  = document.getElementById('invite-modal-overlay');
-        const sendBtn  = document.getElementById('invite-modal-send');
+        const overlay   = document.getElementById('invite-modal-overlay');
+        const sendBtn   = document.getElementById('invite-modal-send');
+        const copyBtn   = document.getElementById('invite-modal-copy');
         const cancelBtn = document.getElementById('invite-modal-cancel');
-        const statusEl = document.getElementById('invite-modal-status');
+        const statusEl  = document.getElementById('invite-modal-status');
 
         // Populate candidate info in the modal
         document.getElementById('invite-cand-name').innerText  = candidate.name || 'Unknown Candidate';
@@ -1919,18 +1920,40 @@ function renderScreeningReport(candidate) {
         // Cancel button closes modal
         cancelBtn.onclick = () => { overlay.style.display = 'none'; };
 
+        // Direct Candidate Link Generator
+        const candId = candidate.id || candidate.email || 'cand-001';
+        const candName = encodeURIComponent(candidate.name || 'Candidate');
+        const candRole = encodeURIComponent(candidate.classification || 'Open Role');
+        const directInviteLink = `${window.location.origin}/#interview?token=invite-${Date.now()}&candidate=${candId}&name=${candName}&role=${candRole}`;
+
+        // Copy Direct Link button handler
+        if (copyBtn) {
+            copyBtn.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(directInviteLink);
+                    showToast('Direct candidate interview link copied to clipboard!', 'success');
+                    statusEl.style.display = 'block';
+                    statusEl.style.background = 'rgba(16,185,129,0.1)';
+                    statusEl.style.color = '#10b981';
+                    statusEl.innerText = '✓ Direct link copied to clipboard! You can paste and send it to the candidate directly.';
+                } catch (e) {
+                    showToast('Failed to copy. Link: ' + directInviteLink, 'info');
+                }
+            };
+        }
+
         // Send button dispatches invite to backend
         sendBtn.onclick = async () => {
             if (!candidate.email) {
                 statusEl.style.display = 'block';
                 statusEl.style.background = 'rgba(239,68,68,0.1)';
                 statusEl.style.color = '#f87171';
-                statusEl.innerText = 'No email address found for this candidate. Please ensure the resume contains an email.';
+                statusEl.innerText = 'No email address found for this candidate. Please use "Copy Direct Link" to share the link manually.';
                 return;
             }
 
             sendBtn.disabled = true;
-            sendBtn.innerText = 'Sending...';
+            sendBtn.innerText = 'Sending email...';
             statusEl.style.display = 'none';
 
             try {
@@ -1956,60 +1979,34 @@ function renderScreeningReport(candidate) {
                 const data = await res.json();
 
                 if (!res.ok) {
-                    throw new Error(data.detail || 'Failed to send invitation.');
+                    throw new Error(data.detail || 'Failed to send email invitation.');
                 }
 
                 // Success state
                 statusEl.style.display = 'block';
                 statusEl.style.background = 'rgba(16,185,129,0.1)';
                 statusEl.style.color = '#10b981';
-                statusEl.innerText = `✓ Invitation sent to ${candidate.email}! The candidate will receive the link shortly.`;
-                sendBtn.innerText = '✓ Invitation Sent';
+                statusEl.innerText = `✓ Email invitation sent to ${candidate.email}! The candidate will receive the link shortly.`;
+                sendBtn.innerText = '✓ Email Sent Successfully';
                 sendBtn.style.background = 'rgba(16,185,129,0.2)';
                 sendBtn.style.color = '#10b981';
 
                 addAuditHistoryEntry('interview:invite_sent', `Candidate: ${candidate.name}`, `Interview invitation email sent to ${candidate.email}.`);
-                showToast(`Interview invitation sent to ${candidate.email}!`, 'success');
-
-                // Also load candidate into interview state for HR to preview
-                state.activeInterview.candidateId   = candidate.id;
-                state.activeInterview.candidateName = candidate.name;
-                state.activeInterview.jobId         = candidate.jobId;
-                state.activeInterview.stage         = 0;
-                state.activeInterview.chatHistory   = [];
-                state.activeInterview.metrics       = { communication: 0, technical: 0, sentiment: 0 };
-                state.activeInterview.skillsUnlocked = [];
+                showToast(`Interview invitation email sent to ${candidate.email}!`, 'success');
 
                 setTimeout(() => {
                     overlay.style.display = 'none';
-                    window.location.hash = 'interview';
-                    navigateToView('interview');
-                }, 1800);
+                }, 2000);
 
             } catch (err) {
-                // If backend is offline, open interview simulator directly (preview mode)
-                if (err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'))) {
-                    overlay.style.display = 'none';
-                    state.activeInterview.candidateId   = candidate.id;
-                    state.activeInterview.candidateName = candidate.name;
-                    state.activeInterview.jobId         = candidate.jobId;
-                    state.activeInterview.stage         = 0;
-                    state.activeInterview.chatHistory   = [];
-                    state.activeInterview.metrics       = { communication: 0, technical: 0, sentiment: 0 };
-                    state.activeInterview.skillsUnlocked = [];
-                    showToast('Email server offline — opening simulator in preview mode.', 'warning');
-                    window.location.hash = 'interview';
-                    navigateToView('interview');
-                    return;
-                }
                 statusEl.style.display = 'block';
                 statusEl.style.background = 'rgba(239,68,68,0.1)';
                 statusEl.style.color = '#f87171';
-                statusEl.innerText = err.message || 'Failed to send invitation. Please check your SMTP_EMAIL and SMTP_APP_PASSWORD environment variables on Render.';
+                statusEl.innerText = err.message || 'Email delivery failed. You can use "Copy Direct Link" above to send the link directly to the candidate.';
                 sendBtn.disabled = false;
                 sendBtn.innerHTML = `
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                    Retry Send`;
+                    Retry Send Email`;
             }
         };
     });
