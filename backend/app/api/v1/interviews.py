@@ -110,10 +110,14 @@ async def send_interview_invite(payload: InterviewInviteRequest):
     Generates a unique, secure interview token and sends an HTML invitation
     email to the candidate via Gmail SMTP.
     """
-    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
+    smtp_email = os.getenv("SMTP_EMAIL", "")
+    smtp_password = os.getenv("SMTP_APP_PASSWORD", "")
+    frontend_url = os.getenv("FRONTEND_URL", "https://ai-recruitment-platform-witv.onrender.com")
+
+    if not smtp_email or not smtp_password:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email service not configured. Please set SMTP_EMAIL and SMTP_APP_PASSWORD environment variables on your deployment."
+            detail="Email service not configured. Please set SMTP_EMAIL and SMTP_APP_PASSWORD environment variables on your Render deployment dashboard."
         )
 
     # Generate a unique secure token for this interview session
@@ -121,7 +125,7 @@ async def send_interview_invite(payload: InterviewInviteRequest):
 
     # Build the direct deep-link to the interview page
     interview_link = (
-        f"{FRONTEND_URL}/#interview"
+        f"{frontend_url}/#interview"
         f"?token={interview_token}"
         f"&candidate={payload.candidate_id}"
         f"&name={payload.candidate_name.replace(' ', '+')}"
@@ -131,7 +135,7 @@ async def send_interview_invite(payload: InterviewInviteRequest):
     # Compose the email
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"Interview Invitation: {payload.job_title} at {payload.company_name}"
-    msg["From"] = f"{payload.company_name} Hiring Team <{SMTP_EMAIL}>"
+    msg["From"] = f"{payload.company_name} Hiring Team <{smtp_email}>"
     msg["To"] = payload.candidate_email
 
     html_body = build_invite_email_html(
@@ -146,8 +150,8 @@ async def send_interview_invite(payload: InterviewInviteRequest):
     # Send via Gmail SMTP
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, payload.candidate_email, msg.as_string())
+            server.login(smtp_email, smtp_password)
+            server.sendmail(smtp_email, payload.candidate_email, msg.as_string())
     except smtplib.SMTPAuthenticationError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
